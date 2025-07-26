@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Odliczanie do Wakacji - Hotel Kamelya Fulya</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <div class="background-animation">
+            <div class="wave wave1"></div>
+            <div class="wave wave2"></div>
+            <div class="wave wave3"></div>
+        </div>
+        
+        <div class="content">
+            <h1 class="title">Odliczanie do Wakacji</h1>
+            <div class="hotel-info">
+                <span class="hotel-icon">🏨</span>
+                <h2 class="hotel-name">Hotel Kamelya Fulya</h2>
+                <p class="date-info">7 sierpnia 2025 - 15:40</p>
+            </div>
+            
+            <div id="countdown" class="countdown">
+                <div class="time-box">
+                    <span id="days" class="time-number">00</span>
+                    <span class="time-label">Dni</span>
+                </div>
+                <div class="time-box">
+                    <span id="hours" class="time-number">00</span>
+                    <span class="time-label">Godzin</span>
+                </div>
+                <div class="time-box">
+                    <span id="minutes" class="time-number">00</span>
+                    <span class="time-label">Minut</span>
+                </div>
+                <div class="time-box">
+                    <span id="seconds" class="time-number">00</span>
+                    <span class="time-label">Sekund</span>
+                </div>
+            </div>
+            
+            <div class="progress-section">
+                <h3 class="progress-title">Postęp podróży do wakacji</h3>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                    <span class="progress-text" id="progress-text">0%</span>
+                </div>
+                <p class="progress-info">
+                    Start: <span id="start-date">-</span> | 
+                    Koniec: <span id="end-date">7.08.2025</span>
+                </p>
+            </div>
+            
+            <div id="vacation-message" class="vacation-message hidden">
+                <div class="celebration">
+                    <h2>🎉 Czas na wakacje! 🎉</h2>
+                    <p>Miłego pobytu w Hotel Kamelya Fulya!</p>
+                    <div class="plane-animation">✈️</div>
+                    <div class="fireworks">
+                        <div class="firework"></div>
+                        <div class="firework"></div>
+                        <div class="firework"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="decorations">
+                <span class="decoration">☀️</span>
+                <span class="decoration">🌴</span>
+                <span class="decoration">🏖️</span>
+                <span class="decoration">🌊</span>
+                <span class="decoration">🍹</span>
+            </div>
+            
+            <div class="sync-status">
+                <span id="sync-indicator" class="sync-indicator">🔄</span>
+                <span id="sync-text">Łączenie z Firebase...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, set, get, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCpgGR6Aky6FVEL1PmdU4J8wU5sZPky_jg",
+            authDomain: "wakacje-66836.firebaseapp.com",
+            databaseURL: "https://wakacje-66836-default-rtdb.firebaseio.com",
+            projectId: "wakacje-66836",
+            storageBucket: "wakacje-66836.firebasestorage.app",
+            messagingSenderId: "63858911180",
+            appId: "1:63858911180:web:eb0cdb548d75c36a2e1f69"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+
+        window.firebaseDb = database;
+        window.firebaseRef = ref;
+        window.firebaseSet = set;
+        window.firebaseGet = get;
+        window.firebaseOnValue = onValue;
+        
+        window.dispatchEvent(new Event('firebaseReady'));
+    </script>
+    
+    <script src="script.js"></script>
+</body>
+</html>
