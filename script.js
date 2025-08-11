@@ -1,14 +1,15 @@
-// Data docelowa - 7 sierpnia 2025, godzina 15:40 (zmienione z 15:30)
-const targetDate = new Date('2025-08-07T15:40:00');
+// Data docelowa powrotu - 17 sierpnia 2025, godzina 21:20 czasu polskiego (CEST)
+const targetDate = new Date('2025-08-17T21:20:00+02:00');
 const username = 'Piotr20111';
 
-// Data startowa - będzie ustawiona na pierwszy raz uruchomienia
+// Data startowa - ustawiana przy rozpoczęciu danego odliczania
 let startDate;
 let firebaseDb, firebaseRef, firebaseSet, firebaseGet, firebaseOnValue;
 let countdownInterval;
 let finalCountdownInterval;
+let liveStatusInterval;
 
-// Wait for Firebase to be ready
+// Poczekaj na gotowe Firebase
 window.addEventListener('firebaseReady', () => {
     firebaseDb = window.firebaseDb;
     firebaseRef = window.firebaseRef;
@@ -19,62 +20,74 @@ window.addEventListener('firebaseReady', () => {
     initializeCountdown();
 });
 
-// Initialize countdown with Firebase
+// Inicjalizacja odliczania z Firebase
 async function initializeCountdown() {
     const userRef = firebaseRef(firebaseDb, `users/${username}`);
+    const currentTargetISO = targetDate.toISOString();
     
     try {
-        // Check if user has a saved start date
+        // Pobierz istniejące dane użytkownika
         const snapshot = await firebaseGet(userRef);
         const data = snapshot.val();
         
-        if (data && data.startDate) {
-            // Use existing start date from Firebase
-            startDate = new Date(data.startDate);
-            console.log('📅 Using saved start date:', startDate);
-        } else {
-            // First time - save current date as start
-            startDate = new Date(); // TERAZ - aktualna data i czas
-            console.log('🆕 First time! Setting start date to NOW:', startDate);
-            
-            // Save to Firebase
+        // Ustal czy resetować startDate (nowe odliczanie do powrotu)
+        const shouldReset = !data ||
+                            !data.startDate ||
+                            data.targetDate !== currentTargetISO ||
+                            data.completed === true;
+        
+        if (shouldReset) {
+            // Nowe odliczanie - ustawiamy start na TERAZ
+            startDate = new Date();
             await firebaseSet(userRef, {
                 username: username,
                 startDate: startDate.toISOString(),
-                targetDate: targetDate.toISOString(),
+                targetDate: currentTargetISO,
                 hotelName: 'Kamelya Fulya',
-                firstVisit: new Date().toISOString()
+                purpose: 'return',
+                completed: false,
+                firstVisit: data && data.firstVisit ? data.firstVisit : new Date().toISOString()
             });
+            console.log('🆕 Nowe odliczanie do powrotu od:', startDate);
+        } else {
+            // Kontynuuj istniejące odliczanie
+            startDate = new Date(data.startDate);
+            console.log('📅 Kontynuuję zapisany start:', startDate);
         }
         
+        // Uaktualnij daty w UI
         document.getElementById('start-date').textContent = formatDate(startDate);
         document.getElementById('end-date').textContent = formatDate(targetDate);
         
+        // Uaktualnij nagłówek z czytelną datą
+        const dateInfo = document.querySelector('.date-info');
+        if (dateInfo) dateInfo.textContent = formatDateLongPL(targetDate);
+        
         updateSyncStatus(true);
         
-        // Start realtime updates
+        // Start aktualizacji live
         startRealtimeUpdates();
         
     } catch (error) {
         console.error('Firebase error:', error);
         updateSyncStatus(false);
-        // If Firebase fails, use current time as start
+        // Jeśli błąd Firebase - użyj bieżącej daty jako start
         startDate = new Date();
         document.getElementById('start-date').textContent = formatDate(startDate);
         document.getElementById('end-date').textContent = formatDate(targetDate);
     }
     
-    // Start countdown - update every 10ms for ultra-smooth live updates
+    // Start odliczania - aktualizacja co 10ms (dokładne animacje)
     updateCountdown();
-    countdownInterval = setInterval(updateCountdown, 10); // 100 updates per second!
+    countdownInterval = setInterval(updateCountdown, 10); // 100 odświeżeń na sekundę
 }
 
-// Start realtime synchronization
+// Synchronizacja w czasie rzeczywistym
 function startRealtimeUpdates() {
     const statusRef = firebaseRef(firebaseDb, `users/${username}/liveStatus`);
     
-    // Update Firebase every second with current status
-    setInterval(() => {
+    // Zapisuj status co sekundę
+    liveStatusInterval = setInterval(() => {
         const now = new Date();
         const difference = targetDate - now;
         
@@ -92,82 +105,67 @@ function startRealtimeUpdates() {
                 remainingMilliseconds: difference,
                 isLive: true
             });
+        } else {
+            // Po zakończeniu - zatrzymaj synchronizację
+            clearInterval(liveStatusInterval);
         }
     }, 1000);
 }
 
-// Calculate remaining percentage LIVE
+// Oblicz procent pozostałego czasu
 function calculateRemainingPercentage() {
-    const now = new Date(); // Always use current time
+    const now = new Date();
     const totalTime = targetDate.getTime() - startDate.getTime();
-    const elapsedTime = now.getTime() - startDate.getTime();
     const remainingTime = targetDate.getTime() - now.getTime();
-    
-    // Calculate percentage remaining
     let percentage = (remainingTime / totalTime) * 100;
-    
-    // Make sure it's between 0 and 100
-    percentage = Math.min(Math.max(percentage, 0), 100);
-    
-    return percentage;
+    return Math.min(Math.max(percentage, 0), 100);
 }
 
-// Get dynamic color based on remaining percentage
+// Dynamiczny kolor paska postępu
 function getProgressColor(remainingPercentage) {
     if (remainingPercentage < 0.01) {
-        // Last seconds! - Pulsing bright red
         const pulse = Math.sin(Date.now() / 100) * 0.5 + 0.5;
         return `linear-gradient(90deg, rgb(255, ${Math.floor(pulse * 50)}, 0), #ff1744, rgb(255, ${Math.floor(pulse * 100)}, 0))`;
     } else if (remainingPercentage < 0.1) {
-        // Last minutes - Animated red
         return 'linear-gradient(90deg, #ff0000, #ff1744, #ff3333)';
     } else if (remainingPercentage < 1) {
-        // Last hours - Bright red
         return 'linear-gradient(90deg, #ff3333, #ff4444, #ff5555)';
     } else if (remainingPercentage < 5) {
-        // Last days - Orange-red
         return 'linear-gradient(90deg, #ff5722, #ff6347, #ff7043)';
     } else if (remainingPercentage < 10) {
-        // Getting close - Orange
         return 'linear-gradient(90deg, #ff8a65, #ffa726, #ffb74d)';
     } else if (remainingPercentage < 20) {
-        // Warming up - Yellow-orange
         return 'linear-gradient(90deg, #ffb74d, #ffc107, #ffd54f)';
     } else if (remainingPercentage < 30) {
-        // Medium - Yellow
         return 'linear-gradient(90deg, #ffd54f, #ffeb3b, #fff176)';
     } else if (remainingPercentage < 50) {
-        // Still time - Light green
         return 'linear-gradient(90deg, #aed581, #9ccc65, #8bc34a)';
     } else if (remainingPercentage < 70) {
-        // Plenty of time - Blue-green
         return 'linear-gradient(90deg, #4fc3f7, #29b6f6, #03a9f4)';
     } else if (remainingPercentage < 90) {
-        // Far away - Blue
         return 'linear-gradient(90deg, #42a5f5, #2196f3, #1e88e5)';
     } else {
-        // Just started - Purple-blue
         return 'linear-gradient(90deg, #667eea, #764ba2, #8e44ad)';
     }
 }
 
-// Update countdown display - LIVE!
+// Aktualizacja UI odliczania
 let lastSecond = -1;
 let lastPercentage = -1;
 let finalCountdownActive = false;
 let lastMilliseconds = -1;
 
 function updateCountdown() {
-    const now = new Date(); // Always get CURRENT time
+    const now = new Date();
     const difference = targetDate - now;
     
-    // If countdown finished
+    // Koniec odliczania
     if (difference <= 0) {
-        showVacationMessage();
+        showVacationMessage(); // teraz: ekran "powrotu"
         return;
     }
     
-    // Calculate time units from LIVE difference
+    // Składniki czasu
     const days = Math.floor(difference / (1000 * 60 * 60 * 24));
     const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
@@ -175,29 +173,27 @@ function updateCountdown() {
     const milliseconds = difference % 1000;
     const totalSeconds = Math.floor(difference / 1000);
     
-    // FINAL COUNTDOWN - Last 60 seconds
+    // Ostatnie 60 sekund
     if (totalSeconds <= 60 && !finalCountdownActive) {
         finalCountdownActive = true;
         activateFinalCountdown();
         
-        // Clear the normal interval and set a faster one for milliseconds
+        // Szybsze odświeżanie
         clearInterval(countdownInterval);
-        finalCountdownInterval = setInterval(updateCountdown, 10); // 100 updates per second
+        finalCountdownInterval = setInterval(updateCountdown, 10);
     }
     
     if (finalCountdownActive) {
-        // Calculate precise seconds with milliseconds
         const preciseSeconds = difference / 1000;
         const displaySeconds = Math.floor(preciseSeconds);
         const displayMilliseconds = Math.floor((preciseSeconds - displaySeconds) * 1000);
         
-        // Update the final countdown display
         document.getElementById('countdown').innerHTML = `
             <div class="final-seconds-container">
                 <div class="final-seconds-box" id="final-box">
                     <span class="final-seconds-number" id="final-seconds">${displaySeconds}</span>
                     <span class="final-milliseconds">.${String(displayMilliseconds).padStart(3, '0')}</span>
-                    <span class="final-seconds-label">SEKUND DO WAKACJI!</span>
+                    <span class="final-seconds-label">SEKUND DO POWROTU!</span>
                 </div>
                 <div class="final-countdown-effects">
                     <div class="pulse-ring"></div>
@@ -208,12 +204,10 @@ function updateCountdown() {
             </div>
         `;
         
-        // Dynamic color effect
         const finalBox = document.getElementById('final-box');
-        const hue = (displaySeconds / 60) * 120; // From red to green
+        const hue = (displaySeconds / 60) * 120; // czerwony -> zielony
         finalBox.style.background = `linear-gradient(135deg, hsl(${hue}, 100%, 50%), hsl(${hue + 30}, 100%, 40%))`;
         
-        // Effects for different stages
         if (displaySeconds <= 10) {
             finalBox.classList.add('shake-animation');
             createContinuousSparkles();
@@ -223,7 +217,6 @@ function updateCountdown() {
             createIntenseFireworks();
         }
         
-        // Trigger effects on each second change
         if (milliseconds !== lastMilliseconds && milliseconds < 100) {
             createBurstEffect();
         }
@@ -231,60 +224,48 @@ function updateCountdown() {
         lastMilliseconds = milliseconds;
         
     } else {
-        // Normal countdown display
+        // Standardowy widok
         if (seconds !== lastSecond) {
             document.getElementById('days').textContent = String(days).padStart(2, '0');
             document.getElementById('hours').textContent = String(hours).padStart(2, '0');
             document.getElementById('minutes').textContent = String(minutes).padStart(2, '0');
             document.getElementById('seconds').textContent = String(seconds).padStart(2, '0');
             
-            // Animate seconds box
             animateTimeBox(document.getElementById('seconds').parentElement);
             lastSecond = seconds;
         }
     }
     
-    // Calculate LIVE percentage
+    // Procenty
     const remainingPercentage = calculateRemainingPercentage();
     const usedPercentage = 100 - remainingPercentage;
     
-    // Update progress bar smoothly
     const progressFill = document.getElementById('progress-fill');
     progressFill.style.width = usedPercentage + '%';
-    progressFill.style.transition = 'width 0.1s linear'; // Smooth transition
-    
-    // Update color based on remaining percentage
+    progressFill.style.transition = 'width 0.1s linear';
     progressFill.style.background = getProgressColor(remainingPercentage);
     
-    // Update percentage text with LIVE values
     const progressText = document.getElementById('progress-text');
     let displayText = '';
     
     if (remainingPercentage < 0.0001) {
-        // Last milliseconds! Show 7 decimal places
         displayText = remainingPercentage.toFixed(7) + '%';
         document.querySelector('.progress-bar').classList.add('pulse-bar');
         progressText.style.fontSize = '1.5rem';
     } else if (remainingPercentage < 0.001) {
-        // Last seconds - show 6 decimal places
         displayText = remainingPercentage.toFixed(6) + '%';
         document.querySelector('.progress-bar').classList.add('pulse-bar');
     } else if (remainingPercentage < 0.01) {
-        // Very close - show 5 decimal places
         displayText = remainingPercentage.toFixed(5) + '%';
         document.querySelector('.progress-bar').classList.add('pulse-bar');
     } else if (remainingPercentage < 0.1) {
-        // Close - show 4 decimal places
         displayText = remainingPercentage.toFixed(4) + '%';
         document.querySelector('.progress-bar').classList.add('pulse-bar');
     } else if (remainingPercentage < 1) {
-        // Less than 1% - show 3 decimal places
         displayText = remainingPercentage.toFixed(3) + '%';
     } else if (remainingPercentage < 10) {
-        // Less than 10% - show 2 decimal places
         displayText = remainingPercentage.toFixed(2) + '%';
     } else {
-        // Normal - show 2 decimal places
         displayText = remainingPercentage.toFixed(2) + '%';
         document.querySelector('.progress-bar').classList.remove('pulse-bar');
         progressText.style.fontSize = '1.2rem';
@@ -292,10 +273,9 @@ function updateCountdown() {
     
     progressText.textContent = displayText;
     
-    // Update progress title LIVE
     const progressTitle = document.querySelector('.progress-title');
     if (remainingPercentage < 0.1) {
-        progressTitle.innerHTML = `🔥🔥🔥 SEKUNDY DO WAKACJI! ${remainingPercentage.toFixed(4)}% 🔥🔥🔥`;
+        progressTitle.innerHTML = `🔥🔥🔥 SEKUNDY DO POWROTU! ${remainingPercentage.toFixed(4)}% 🔥🔥🔥`;
         progressTitle.style.color = '#ff0000';
         progressTitle.style.animation = 'glow 0.2s ease-in-out infinite alternate';
     } else if (remainingPercentage < 1) {
@@ -309,33 +289,29 @@ function updateCountdown() {
         progressTitle.textContent = `☀️ Coraz bliżej! Pozostało: ${remainingPercentage.toFixed(2)}%`;
         progressTitle.style.color = '#ff8a65';
     } else {
-        progressTitle.textContent = `Pozostało do wakacji: ${remainingPercentage.toFixed(2)}%`;
+        progressTitle.textContent = `Pozostało do powrotu: ${remainingPercentage.toFixed(2)}%`;
         progressTitle.style.color = '#667eea';
         progressTitle.style.animation = 'none';
     }
     
-    // Time boxes color change when close
     if (remainingPercentage < 10 && !finalCountdownActive) {
         document.querySelectorAll('.time-box').forEach(box => {
             box.style.background = getProgressColor(remainingPercentage);
         });
     }
     
-    // Milestone effects
     const currentWholePercent = Math.floor(remainingPercentage);
     const lastWholePercent = Math.floor(lastPercentage);
     
     if (lastPercentage !== -1 && currentWholePercent < lastWholePercent && remainingPercentage < 10) {
-        // Crossed a percentage milestone
         createMiniConfetti();
     }
     
     lastPercentage = remainingPercentage;
 }
 
-// Activate final countdown mode
+// Aktywuj tryb finałowego odliczania
 function activateFinalCountdown() {
-    // Add special CSS for final countdown
     const style = document.createElement('style');
     style.textContent = `
         .final-seconds-container {
@@ -492,16 +468,14 @@ function activateFinalCountdown() {
     `;
     document.head.appendChild(style);
     
-    // Start continuous effects
     createFinalCountdownParticles();
 }
 
-// Create continuous sparkles for final countdown
+// Efekty końcówki
 function createContinuousSparkles() {
     const sparklesContainer = document.getElementById('sparkles');
     if (!sparklesContainer) return;
     
-    // Create multiple sparkles
     for (let i = 0; i < 10; i++) {
         setTimeout(() => {
             const sparkle = document.createElement('div');
@@ -514,13 +488,11 @@ function createContinuousSparkles() {
             sparkle.style.boxShadow = `0 0 ${Math.random() * 10 + 5}px rgba(255, 255, 255, 0.8)`;
             
             sparklesContainer.appendChild(sparkle);
-            
             setTimeout(() => sparkle.remove(), 1000);
         }, i * 100);
     }
 }
 
-// Create burst effect for final countdown
 function createBurstEffect() {
     const colors = ['#fff', '#ffd700', '#ff69b4', '#00ffff', '#ff00ff'];
     const centerX = window.innerWidth / 2;
@@ -557,7 +529,6 @@ function createBurstEffect() {
     }
 }
 
-// Create intense fireworks for last 5 seconds
 function createIntenseFireworks() {
     const colors = ['#ff0000', '#ffd700', '#00ff00', '#00ffff', '#ff00ff', '#ff69b4'];
     
@@ -566,7 +537,6 @@ function createIntenseFireworks() {
             const x = Math.random() * window.innerWidth;
             const y = Math.random() * window.innerHeight * 0.5;
             
-            // Create explosion
             for (let i = 0; i < 30; i++) {
                 const particle = document.createElement('div');
                 particle.style.position = 'fixed';
@@ -604,7 +574,6 @@ function createIntenseFireworks() {
     }
 }
 
-// Create final countdown particles
 function createFinalCountdownParticles() {
     setInterval(() => {
         if (finalCountdownActive) {
@@ -613,7 +582,6 @@ function createFinalCountdownParticles() {
     }, 500);
 }
 
-// Create mini fireworks for final countdown
 function createMiniFireworks() {
     const colors = ['#ff0000', '#ff6347', '#ffd700', '#ff1493', '#00ff00'];
     for (let i = 0; i < 5; i++) {
@@ -630,7 +598,6 @@ function createMiniFireworks() {
             firework.style.zIndex = '10000';
             document.body.appendChild(firework);
             
-            // Explode effect
             const particles = 8;
             for (let j = 0; j < particles; j++) {
                 const particle = firework.cloneNode();
@@ -656,7 +623,7 @@ function createMiniFireworks() {
     }
 }
 
-// Format date for display
+// Formatowanie daty krótko
 function formatDate(date) {
     const day = date.getDate().toString().padStart(2, '0');
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
@@ -666,7 +633,21 @@ function formatDate(date) {
     return `${day}.${month}.${year} ${hours}:${minutes}`;
 }
 
-// Update sync status
+// Formatowanie daty długie po polsku (np. 17 sierpnia 2025 - 21:20)
+function formatDateLongPL(date) {
+    const months = [
+        'stycznia', 'lutego', 'marca', 'kwietnia', 'maja', 'czerwca',
+        'lipca', 'sierpnia', 'września', 'października', 'listopada', 'grudnia'
+    ];
+    const d = date.getDate();
+    const m = months[date.getMonth()];
+    const y = date.getFullYear();
+    const hh = date.getHours().toString().padStart(2, '0');
+    const mm = date.getMinutes().toString().padStart(2, '0');
+    return `${d} ${m} ${y} - ${hh}:${mm}`;
+}
+
+// Status synchronizacji
 function updateSyncStatus(synced) {
     const indicator = document.getElementById('sync-indicator');
     const text = document.getElementById('sync-text');
@@ -682,7 +663,7 @@ function updateSyncStatus(synced) {
     }
 }
 
-// Animate time box
+// Animacja pudełka czasu
 function animateTimeBox(element) {
     element.classList.add('pulse');
     setTimeout(() => {
@@ -690,25 +671,26 @@ function animateTimeBox(element) {
     }, 300);
 }
 
-// Show vacation message - ENHANCED
+// Ekran po zakończeniu odliczania (powrót)
 function showVacationMessage() {
-    // Clear intervals
+    // Wyczyść timery
     clearInterval(countdownInterval);
     clearInterval(finalCountdownInterval);
+    clearInterval(liveStatusInterval);
     
-    // Hide all countdown elements
+    // Schowaj elementy
     document.getElementById('countdown').style.display = 'none';
     document.querySelector('.progress-section').style.display = 'none';
     document.querySelector('.hotel-info').style.display = 'none';
     document.querySelector('.title').style.display = 'none';
     document.querySelector('.decorations').style.display = 'none';
     
-    // Create spectacular vacation message
+    // Wiadomość finałowa
     const container = document.querySelector('.content');
     container.innerHTML = `
         <div class="vacation-celebration">
-            <h1 class="vacation-title">🎉 Zaraz wylatuję! ✈️</h1>
-            <p class="vacation-subtitle">Do zobaczenia w krótce!</p>
+            <h1 class="vacation-title">🎉 Czas na powrót! ✈️</h1>
+            <p class="vacation-subtitle">Witaj z powrotem i miłego lądowania!</p>
             <div class="plane-flying">✈️</div>
             <div class="continuous-fireworks" id="fireworks-container"></div>
             <canvas id="confetti-canvas" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999;"></canvas>
@@ -777,24 +759,25 @@ function showVacationMessage() {
         </style>
     `;
     
-    // Update Firebase with completion
+    // Zapisz zakończenie w Firebase
     const userRef = firebaseRef(firebaseDb, `users/${username}`);
     firebaseSet(userRef, {
         username: username,
         startDate: startDate.toISOString(),
         targetDate: targetDate.toISOString(),
         hotelName: 'Kamelya Fulya',
+        purpose: 'return',
         completed: true,
         completedAt: new Date().toISOString()
     });
     
-    // Start spectacular animations
+    // Animacje
     startContinuousFireworks();
     startConfettiCanvas();
     createMassiveFireworks();
 }
 
-// Create massive fireworks for completion
+// Silne fajerwerki po zakończeniu
 function createMassiveFireworks() {
     setInterval(() => {
         for (let i = 0; i < 3; i++) {
@@ -805,13 +788,11 @@ function createMassiveFireworks() {
     }, 1500);
 }
 
-// Create spectacular firework
 function createSpectacularFirework() {
     const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffa500', '#ff1493', '#ffd700'];
     const x = Math.random() * window.innerWidth;
     const y = Math.random() * window.innerHeight * 0.6;
     
-    // Create trail
     const trail = document.createElement('div');
     trail.style.position = 'fixed';
     trail.style.width = '4px';
@@ -822,7 +803,6 @@ function createSpectacularFirework() {
     trail.style.zIndex = '10000';
     document.body.appendChild(trail);
     
-    // Animate trail
     trail.animate([
         { transform: 'translateY(0)', opacity: 1 },
         { transform: `translateY(-${window.innerHeight - y}px)`, opacity: 0 }
@@ -832,7 +812,6 @@ function createSpectacularFirework() {
     }).onfinish = () => {
         trail.remove();
         
-        // Create explosion
         const particleCount = 40;
         for (let i = 0; i < particleCount; i++) {
             const particle = document.createElement('div');
@@ -870,7 +849,7 @@ function createSpectacularFirework() {
     };
 }
 
-// Start confetti canvas animation
+// Konfetti na canvasie
 function startConfettiCanvas() {
     const canvas = document.getElementById('confetti-canvas');
     const ctx = canvas.getContext('2d');
@@ -880,7 +859,6 @@ function startConfettiCanvas() {
     const confettiParticles = [];
     const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#ffa500'];
     
-    // Create confetti particles
     for (let i = 0; i < 150; i++) {
         confettiParticles.push({
             x: Math.random() * canvas.width,
@@ -897,18 +875,16 @@ function startConfettiCanvas() {
     function animateConfetti() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
-        confettiParticles.forEach((particle, index) => {
+        confettiParticles.forEach((particle) => {
             particle.x += particle.vx;
             particle.y += particle.vy;
             particle.angle += particle.angleVelocity;
             
-            // Reset particle if it goes off screen
             if (particle.y > canvas.height) {
                 particle.y = -20;
                 particle.x = Math.random() * canvas.width;
             }
             
-            // Draw particle
             ctx.save();
             ctx.translate(particle.x, particle.y);
             ctx.rotate(particle.angle * Math.PI / 180);
@@ -923,28 +899,24 @@ function startConfettiCanvas() {
     animateConfetti();
 }
 
-// Continuous fireworks animation
+// Ciągłe fajerwerki tła
 function startContinuousFireworks() {
     const fireworksContainer = document.getElementById('fireworks-container');
     
-    // Create fireworks every 500ms
     setInterval(() => {
         createFireworkBurst(fireworksContainer);
     }, 500);
     
-    // Create initial burst
     for (let i = 0; i < 5; i++) {
         setTimeout(() => createFireworkBurst(fireworksContainer), i * 100);
     }
 }
 
-// Create a single firework burst
 function createFireworkBurst(container) {
     const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffa500', '#ff1493'];
     const x = Math.random() * 100;
     const y = 20 + Math.random() * 60;
     
-    // Create explosion center
     const burst = document.createElement('div');
     burst.style.position = 'absolute';
     burst.style.left = x + '%';
@@ -953,7 +925,6 @@ function createFireworkBurst(container) {
     burst.style.height = '4px';
     container.appendChild(burst);
     
-    // Create particles
     const particleCount = 20;
     for (let i = 0; i < particleCount; i++) {
         const particle = document.createElement('div');
@@ -986,11 +957,10 @@ function createFireworkBurst(container) {
         }).onfinish = () => particle.remove();
     }
     
-    // Remove burst container after animation
     setTimeout(() => burst.remove(), 2000);
 }
 
-// Create confetti effect
+// Konfetti milestone
 function createConfetti() {
     const colors = ['#ff6347', '#32cd32', '#1e90ff', '#ffd700', '#ff1493'];
     const confettiCount = 200;
@@ -1024,7 +994,6 @@ function createConfetti() {
     }
 }
 
-// Create mini confetti for milestones
 function createMiniConfetti() {
     const colors = ['#ffd700', '#ff6347', '#32cd32'];
     for (let i = 0; i < 10; i++) {
@@ -1041,7 +1010,6 @@ function createMiniConfetti() {
             confetti.style.zIndex = '9999';
             document.body.appendChild(confetti);
             
-            // Animate
             confetti.animate([
                 { transform: 'translate(0, 0) scale(1)', opacity: 1 },
                 { transform: `translate(${(Math.random() - 0.5) * 200}px, ${-Math.random() * 200}px) scale(0)`, opacity: 0 }
@@ -1053,7 +1021,7 @@ function createMiniConfetti() {
     }
 }
 
-// Add mouse parallax effect
+// Parallax myszy na falach (uwaga: nadpisuje transform animacji fal)
 document.addEventListener('mousemove', (e) => {
     const waves = document.querySelectorAll('.wave');
     const x = e.clientX / window.innerWidth;
@@ -1065,7 +1033,7 @@ document.addEventListener('mousemove', (e) => {
     });
 });
 
-// Decoration animations
+// Animacje dekoracji
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.decoration').forEach(decoration => {
         decoration.addEventListener('mouseenter', function() {
@@ -1078,7 +1046,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// Live clock in console for debugging
+// Zegar live w konsoli (debug)
 setInterval(() => {
     const now = new Date();
     const remaining = calculateRemainingPercentage();
